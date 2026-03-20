@@ -7,7 +7,13 @@ let supabaseInstance: ReturnType<typeof createClient> | null = null;
 
 export function getSupabase() {
   if (!supabaseInstance) {
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    });
   }
   return supabaseInstance;
 }
@@ -16,18 +22,31 @@ export async function broadcastEvent(
   channelName: string,
   payload: Record<string, unknown>
 ) {
-  const url = `${supabaseUrl}/realtime/v1/api/broadcast`;
-  await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-    },
-    body: JSON.stringify({
-      messages: [{ topic: channelName, event: 'room-event', payload }],
-    }),
-  });
+  try {
+    const url = `${supabaseUrl}/realtime/v1/api/broadcast`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({
+        messages: [{ topic: channelName, event: 'room-event', payload }],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to broadcast event:', response.status, await response.text());
+      return false;
+    }
+
+    console.log(`Broadcasted event to ${channelName}:`, payload.type);
+    return true;
+  } catch (error) {
+    console.error('Error broadcasting event:', error);
+    return false;
+  }
 }
 
 export type RealtimeRoomEvent =
@@ -44,11 +63,22 @@ export function subscribeToRoom(
   const supabase = getSupabase();
   const channel = supabase.channel(channelName);
 
-  channel.on('broadcast', { event: 'room-event' }, (msg) => {
-    callback(msg.payload as RealtimeRoomEvent);
+  channel.on('broadcast', { event: 'room-event' }, (payload) => {
+    console.log(`Received event on ${channelName}:`, payload);
+    callback(payload.payload as RealtimeRoomEvent);
   });
 
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      console.log(`Successfully subscribed to channel: ${channelName}`);
+    } else if (status === 'CHANNEL_ERROR') {
+      console.error(`Error subscribing to channel: ${channelName}`);
+    } else if (status === 'TIMED_OUT') {
+      console.error(`Subscription timed out for channel: ${channelName}`);
+    } else {
+      console.log(`Channel ${channelName} status:`, status);
+    }
+  });
 
   return channel;
 }
@@ -56,4 +86,5 @@ export function subscribeToRoom(
 export function unsubscribeFromRoom(channel: RealtimeChannel) {
   const supabase = getSupabase();
   supabase.removeChannel(channel);
+  console.log('Unsubscribed from channel');
 }

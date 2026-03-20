@@ -1,18 +1,26 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { createRoom, getRoom } from '@/lib/room';
+import { createRoom, addPlayer, getRoom } from '@/lib/db';
 import { generateRoomCode } from '@/lib/room-code';
 
 export async function POST() {
   try {
     let code = generateRoomCode();
-    while (getRoom(code)) {
+    while (await getRoom(code)) {
       code = generateRoomCode();
     }
-    
+
     const hostId = uuidv4();
-    const room = createRoom(code, hostId);
-    
+    const room = await createRoom(code, hostId);
+
+    await addPlayer({
+      id: hostId,
+      nickname: 'Host',
+      roomCode: code,
+      score: 0,
+      isConnected: true,
+    });
+
     return NextResponse.json({
       success: true,
       data: {

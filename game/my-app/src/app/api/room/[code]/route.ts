@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRoomWithPlayers } from '@/lib/room';
+import { getRoomWithPlayers } from '@/lib/db';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ code: string }> }
+  { params }: { params: { code: string } }
 ) {
-  const { code } = await params;
-  
-  const room = getRoomWithPlayers(code.toUpperCase());
+  const room = await getRoomWithPlayers(params.code.toUpperCase());
   
   if (!room) {
     return NextResponse.json(

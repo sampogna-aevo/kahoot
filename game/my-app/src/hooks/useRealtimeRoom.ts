@@ -16,11 +16,16 @@ export function useRealtimeRoom(
   useEffect(() => {
     if (!roomCode) return;
 
-    const channel = subscribeToRoom(`room:${roomCode}`, (event) => {
+    const channelName = `room:${roomCode}`;
+    console.log(`Setting up realtime subscription for room: ${roomCode}`);
+
+    const channel = subscribeToRoom(channelName, (event) => {
+      console.log(`useRealtimeRoom received event:`, event);
       callbackRef.current(event);
     });
 
     return () => {
+      console.log(`Cleaning up realtime subscription for room: ${roomCode}`);
       unsubscribeFromRoom(channel);
     };
   }, [roomCode]);

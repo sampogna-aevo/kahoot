@@ -1,79 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlayer, updatePlayer, getRoom } from '@/lib/room';
+import { getPlayer, updatePlayer, getRoom } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { QUESTIONS } from '@/data/questions';
 import { calculateScore } from '@/lib/scoring';
 
-const playerAnswers = new Map<string, Map<number, { answeredAt: number; selectedIndex: number }>>();
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ code: string }> }
-) {
-  const { code } = await params;
-  const roomCode = code.toUpperCase();
-  
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { playerId, selectedIndex, questionIndex } = body;
-    
-    const room = getRoom(roomCode);
-    
+
+    const player = await getPlayer(playerId);
+
+    if (!player) {
+      return NextResponse.json(
+        { error: { code: 'PLAYER_NOT_FOUND', message: 'Jogador não encontrado' } },
+        { status: 404 }
+      );
+    }
+
+    const roomCode = player.roomCode;
+    const room = await getRoom(roomCode);
+
     if (!room) {
       return NextResponse.json(
         { error: { code: 'ROOM_NOT_FOUND', message: 'Sala não encontrada' } },
         { status: 404 }
       );
     }
-    
+
     if (room.state !== 'IN_PROGRESS') {
       return NextResponse.json(
         { error: { code: 'QUIZ_NOT_STARTED', message: 'Quiz ainda não começou' } },
         { status: 400 }
       );
     }
-    
-    const player = getPlayer(playerId);
-    
-    if (!player || player.roomCode !== roomCode) {
-      return NextResponse.json(
-        { error: { code: 'NOT_IN_ROOM', message: 'Você não está nesta sala' } },
-        { status: 403 }
-      );
-    }
-    
-    if (!playerAnswers.has(playerId)) {
-      playerAnswers.set(playerId, new Map());
-    }
-    
-    const playerAnswerMap = playerAnswers.get(playerId)!;
-    
-    if (playerAnswerMap.has(questionIndex)) {
+
+    const { data: existingAnswer } = await supabase
+      .from('answers')
+      .select('*')
+      .eq('playerId', playerId)
+      .eq('questionIndex', questionIndex)
+      .single();
+
+    if (existingAnswer) {
       return NextResponse.json(
         { error: { code: 'ALREADY_ANSWERED', message: 'Você já respondeu esta pergunta' } },
         { status: 400 }
       );
     }
-    
+
     const question = QUESTIONS[questionIndex];
-    
+
     if (!question) {
       return NextResponse.json(
         { error: { code: 'QUESTION_NOT_FOUND', message: 'Pergunta não encontrada' } },
         { status: 404 }
       );
     }
-    
+
     const answeredAt = Date.now();
-    playerAnswerMap.set(questionIndex, { answeredAt, selectedIndex });
-    
+
     const isCorrect = selectedIndex === question.correctIndex;
     const responseTime = answeredAt - (room.updatedAt || room.createdAt);
     const points = calculateScore(responseTime, question.timeLimit, isCorrect);
-    
+
+    await supabase.from('answers').insert({
+      playerId,
+      questionIndex,
+      selectedIndex,
+      isCorrect,
+      responseTime,
+      points,
+      answeredAt,
+    });
+
     if (isCorrect) {
-      updatePlayer(playerId, { score: player.score + points });
+      await updatePlayer(playerId, { score: player.score + points });
     }
-    
+
     return NextResponse.json({
       success: true,
       data: {
