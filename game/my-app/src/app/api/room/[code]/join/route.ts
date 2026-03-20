@@ -5,9 +5,10 @@ import { broadcastEvent } from '@/lib/supabase';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
-  const roomCode = params.code.toUpperCase();
+  const { code } = await params;
+  const roomCode = code.toUpperCase();
 
   try {
     const body = await request.json();

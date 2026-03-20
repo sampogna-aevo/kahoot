@@ -3,9 +3,10 @@ import { getRoomWithPlayers } from '@/lib/db';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
-  const room = await getRoomWithPlayers(params.code.toUpperCase());
+  const { code } = await params;
+  const room = await getRoomWithPlayers(code.toUpperCase());
   
   if (!room) {
     return NextResponse.json(
